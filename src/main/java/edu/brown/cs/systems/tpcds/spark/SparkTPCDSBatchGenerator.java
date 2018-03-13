@@ -6,10 +6,8 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.commons.lang.StringUtils;
-import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
-import org.apache.spark.sql.hive.HiveContext;
-import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.SQLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,33 +22,35 @@ public class SparkTPCDSBatchGenerator {
 
 	public final String name;
 	public final TPCDSSettings settings;
-	public final SparkConf sparkConf;
 	public final SparkContext sparkContext;
-	public final HiveContext sqlContext;
+	public final SQLContext sqlContext;
 	public final Tables tables;
-	
+
 	private SparkTPCDSBatchGenerator(String name, TPCDSSettings settings) {
 		this.name = name;
 		this.settings = settings;
-		this.sparkConf = new SparkConf().setAppName(name);
-		this.sparkContext = new SparkContext(sparkConf);
-		this.sqlContext = new HiveContext(sparkContext);
-		
+        SparkSession sparkSession = SparkSession
+                .builder()
+                .appName(name)
+                .getOrCreate();
+		this.sparkContext = sparkSession.sparkContext();
+		this.sqlContext = sparkSession.sqlContext();
+
 		// Load the tables into memory using the spark-sql-perf Tables code
 		this.tables = new Tables(sqlContext, settings.scaleFactor);
 		tables.createTemporaryTables(settings.dataLocation, settings.dataFormat, "");
 	}
-	
+
 	/** Load TPC-DS tables into memory using default configuration */
 	public static SparkTPCDSBatchGenerator spinUpWithDefaults() {
 		return spinUp("SparkTPCDSWorkloadGenerator", TPCDSSettings.createWithDefaults());
 	}
-	
+
 	/** Load TPC-DS tables into memory sourced using the provided settings */
 	public static SparkTPCDSBatchGenerator spinUp(String name, TPCDSSettings settings) {
 		return new SparkTPCDSBatchGenerator(name, settings);
 	}
-	
+
 	public static void main(String[] args) throws FileNotFoundException {
         // Create from default settings
         TPCDSSettings settings = TPCDSSettings.createWithDefaults();
@@ -65,26 +65,26 @@ public class SparkTPCDSBatchGenerator {
 		} else {
 	        for (int i = 0; i < args.length; i++) {
 	            String queryName = args[i];
-	            
+
 	            // Load the benchmark
 	            String[] splits = queryName.split(File.separator);
 	            Benchmark b = QueryUtils.load().get(splits[0]);
-	            
+
 	            // Bad benchmark
 	            if (b == null) {
 	                System.out.println("Skipping unknown benchmark " + splits[0]);
 	                continue;
 	            }
-	            
+
 	            // No query specified
 	            if (splits.length <= 1) {
 	                System.out.println("No query specified, expected dataset and query, eg impala-tpcds-modified-queries/q19.sql");
 	                continue;
-	            }   
-	        
+	            }
+
 	            // Get the query
 	            Query q = b.benchmarkQueries.get(splits[1]);
-	            
+
 	            // Bad query
 	            if (q == null) {
 	                System.out.println("Skipping unknown query " + queryName);
@@ -95,10 +95,10 @@ public class SparkTPCDSBatchGenerator {
 		}
 
         System.out.printf("Will attempt %d queries on %s dataset %s\n", allQueries.size(), settings.dataFormat, settings.dataLocation);
-		
-        
+
+
         System.out.println("Loading tables into memory...");
-        long preLoad = System.currentTimeMillis();        
+        long preLoad = System.currentTimeMillis();
 		SparkTPCDSBatchGenerator gen = spinUp("SparkTPCDSWorkloadGenerator", settings);
         long postLoad = System.currentTimeMillis();
 		System.out.printf("Loading tables into memory took %.1f seconds\n", (postLoad - preLoad) / 1000.0);
@@ -107,12 +107,12 @@ public class SparkTPCDSBatchGenerator {
 		PrintWriter statusLog = new PrintWriter(outputFileName);
 		String[] headers = { "t", "i", "benchmark", "query", "benchmark.query", "duration", "successful", "errorreason", "taskid", "auxtaskid" };
 		statusLog.println(StringUtils.join(headers, "\t"));
-		
+
 		System.out.println("Running " + allQueries.size() + " queries, writing output to " + outputFileName);
-		
+
 		int iteration = 1;
 		Long taskId = null;
-		for (Query query : allQueries) {    
+		for (Query query : allQueries) {
     		// Run the query
     		long begin = System.currentTimeMillis();
     		long end;
@@ -120,7 +120,7 @@ public class SparkTPCDSBatchGenerator {
     		String errorreason = "";
     		try {
     		    System.out.println("Running " + query);
-    		    Row[] rows = gen.sqlContext.sql(query.queryText).collect();
+    		    //Row[] rows = gen.sqlContext.sql(query.queryText.toString()).collect();
     		    end = System.currentTimeMillis();
     		    successful = true;
     		    System.out.printf("%s completed successfully in %.1f seconds\n", query, (end-begin) / 1000.0);
@@ -132,13 +132,13 @@ public class SparkTPCDSBatchGenerator {
             Object[] row = { end, iteration, query.benchmarkName(), query.queryName, query, end-begin, successful, errorreason, toHexString(taskId), toHexString(taskId+1) };
             statusLog.println(StringUtils.join(row, "\t"));
             statusLog.flush();
-		    
+
 		    iteration++;
 		}
-		
+
 		statusLog.close();
 	}
-	
+
 	public static String toHexString(long value) {
 	    return String.format("%16s", Long.toHexString(value)).replace(' ', '0');
 	}

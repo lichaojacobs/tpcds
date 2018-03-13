@@ -3,11 +3,9 @@ package edu.brown.cs.systems.tpcds.spark;
 import java.io.File;
 import java.io.FileNotFoundException;
 
-import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
-import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
-import org.apache.spark.sql.hive.HiveContext;
+import org.apache.spark.sql.SparkSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,17 +20,19 @@ public class SparkTPCDSWorkloadGenerator {
 
 	public final String name;
 	public final TPCDSSettings settings;
-	public final SparkConf sparkConf;
 	public final SparkContext sparkContext;
-	public final HiveContext sqlContext;
+	public final SQLContext sqlContext;
 	public final Tables tables;
 	
 	private SparkTPCDSWorkloadGenerator(String name, TPCDSSettings settings) {
 		this.name = name;
 		this.settings = settings;
-		this.sparkConf = new SparkConf().setAppName(name);
-		this.sparkContext = new SparkContext(sparkConf);
-		this.sqlContext = new HiveContext(sparkContext);
+        SparkSession sparkSession = SparkSession
+                .builder()
+                .appName(name)
+                .getOrCreate();
+		this.sparkContext = sparkSession.sparkContext();
+		this.sqlContext = sparkSession.sqlContext();
 		
 		// Load the tables into memory using the spark-sql-perf Tables code
 		this.tables = new Tables(sqlContext, settings.scaleFactor);
@@ -95,12 +95,12 @@ public class SparkTPCDSWorkloadGenerator {
 	        long postLoad = System.currentTimeMillis();
     
     		// Run the query
-    		Row[] rows = gen.sqlContext.sql(q.queryText).collect();
+    		//Row[] rows = gen.sqlContext.sql(q.queryText.toString()).collect();
     		
     		// Print the output rows
-    		for (Row r : rows) {
-    			System.out.println(r);
-    		}
+//    		for (Row r : rows) {
+//    			System.out.println(r);
+//    		}
     
     		long postQ = System.currentTimeMillis();
     		System.out.printf("Load time: %d, Query time: %d\n", postLoad-preLoad, postQ-postLoad);

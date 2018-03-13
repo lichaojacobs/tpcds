@@ -26,6 +26,22 @@ public class TPCDSSettings {
 		filterOutNullPartitionValues = config.getBoolean("filterOutNullPartitionValues");
 	}
 
+	public void setScaleFactor(int scaleFactor) {
+		this.scaleFactor = scaleFactor;
+	}
+
+	public void setDataLocation(String dataLocation) {
+		this.dataLocation = dataLocation;
+	}
+
+	public void setDataFormat(String dataFormat) {
+		this.dataFormat = dataFormat;
+	}
+
+	public void setPartitionTables(boolean partitionTables) {
+		this.partitionTables = partitionTables;
+	}
+
 	/**
 	 * Create TPC-DS settings, taking values from the default typesafe config.
 	 * This call is equivalent to
